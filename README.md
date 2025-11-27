@@ -43,29 +43,7 @@ kaggle-monitor/
 
 这是最简单、最稳定的部署方式，适合部署在 VPS 或群晖/NAS 上。
 
-### 方式一：使用 Docker Hub 镜像
-
-```bash
-# 1. 拉取镜像
-docker pull jue993/kaggle-monitor:latest
-
-# 2. 创建配置文件
-mkdir kaggle-monitor && cd kaggle-monitor
-curl -o .env.example https://raw.githubusercontent.com/sheepyd/kaggle-monitor/main/.env.example
-cp .env.example .env
-nano .env  # 编辑配置
-
-# 3. 运行容器
-docker run -d \
-  --name kaggle-monitor \
-  --restart unless-stopped \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  -e TZ=Asia/Shanghai \
-  jue993/kaggle-monitor:latest
-```
-
-### 方式二：从源码构建
+### 方式一：从源码构建（推荐）
 
 ```bash
 # 1. 获取代码
@@ -78,6 +56,28 @@ nano .env  # 编辑配置
 
 # 3. 一键启动
 docker-compose up -d --build
+```
+
+### 方式二：使用 Docker Hub 镜像
+
+适合不想 clone 代码的用户：
+
+```bash
+# 1. 拉取镜像
+docker pull jue993/kaggle-monitor:latest
+
+# 2. 创建配置文件 (手动创建 .env，参考下方配置详解)
+mkdir kaggle-monitor && cd kaggle-monitor
+nano .env
+
+# 3. 运行容器
+docker run -d \
+  --name kaggle-monitor \
+  --restart unless-stopped \
+  --env-file .env \
+  -v $(pwd)/data:/app/data \
+  -e TZ=Asia/Shanghai \
+  jue993/kaggle-monitor:latest
 ```
 
 ### 常用管理命令
