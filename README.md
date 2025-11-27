@@ -39,11 +39,11 @@ kaggle-monitor/
 
 ---
 
-## 快速开始 (Docker 部署 - 推荐)
+## 快速开始
 
-这是最简单、最稳定的部署方式，适合部署在 VPS 或群晖/NAS 上。
+### 方式一：Docker 部署（推荐）
 
-### 方式一：从源码构建（推荐）
+适合部署在 VPS 或群晖/NAS 上，一键启动，环境隔离。
 
 ```bash
 # 1. 获取代码
@@ -56,36 +56,14 @@ nano .env  # 编辑配置
 
 # 3. 一键启动
 docker-compose up -d --build
-```
 
-### 方式二：使用 Docker Hub 镜像
-
-适合不想 clone 代码的用户：
-
-```bash
-# 1. 拉取镜像
-docker pull jue993/kaggle-monitor:latest
-
-# 2. 创建配置文件 (手动创建 .env，参考下方配置详解)
-mkdir kaggle-monitor && cd kaggle-monitor
-nano .env
-
-# 3. 运行容器
-docker run -d \
-  --name kaggle-monitor \
-  --restart unless-stopped \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  -e TZ=Asia/Shanghai \
-  jue993/kaggle-monitor:latest
-```
-
-### 常用管理命令
-
-```bash
-# 查看运行日志 (确认是否启动成功)
+# 4. 查看日志
 docker-compose logs -f
+```
 
+**常用管理命令：**
+
+```bash
 # 停止服务
 docker-compose down
 
@@ -93,29 +71,27 @@ docker-compose down
 docker-compose restart
 ```
 
----
+### 方式二：Python 直接运行
 
-## 本地开发 / 传统部署
-
-如果你不想使用 Docker，也可以直接在 Python 环境中运行。
-
-### 1. 安装依赖
+适合本地开发或不使用 Docker 的环境。
 
 ```bash
+# 1. 获取代码
+git clone https://github.com/sheepyd/kaggle-monitor.git
+cd kaggle-monitor
+
+# 2. 安装依赖
 pip install -r requirements.txt
-```
 
-### 2. 配置环境
+# 3. 配置环境变量
+cp .env.example .env
+nano .env  # 编辑配置
 
-同样需要配置 `.env` 文件（同上）。或者，你可以将 Kaggle 的官方认证文件 `kaggle.json` 放入 `~/.kaggle/` 目录下。
-
-### 3. 运行脚本
-
-```bash
+# 4. 运行
 python monitor.py
 ```
 
-*注：若需在 Linux 后台长期运行，建议使用 `nohup` 或配置 `systemd` 服务。*
+*注：若需在 Linux 后台长期运行，建议使用 `nohup python monitor.py &` 或配置 `systemd` 服务。*
 
 ---
 
