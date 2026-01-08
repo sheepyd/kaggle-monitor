@@ -9,13 +9,15 @@ import os
 import re
 import json
 import time
+import signal
+import sys
 import smtplib
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 
 from kaggle.api.kaggle_api_extended import KaggleApi
 from dotenv import load_dotenv
@@ -30,6 +32,19 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
+
+# 全局运行标志
+running = True
+
+def signal_handler(signum, frame):
+    """处理退出信号"""
+    global running
+    logger.info(f"接收到信号 {signum}, 准备优雅退出...")
+    running = False
+
+# 注册信号处理
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 # 配置参数
 KAGGLE_USERNAME = os.getenv('KAGGLE_USERNAME')
@@ -76,20 +91,30 @@ def load_notified_competitions() -> set:
 
 
 def save_notified_competitions(notified: set):
-    """保存已通知的比赛 ID 列表"""
+    """保存已通知的比赛 ID 列表 (使用原子写入防止数据损坏)"""
     try:
-        with open(NOTIFIED_FILE, 'w', encoding='utf-8') as f:
+        # 写入临时文件
+        temp_file = NOTIFIED_FILE.with_suffix('.tmp')
+        with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump({
                 'competitions': list(notified),
                 'updated_at': datetime.now().isoformat()
             }, f, ensure_ascii=False, indent=2)
+
+        # 原子重命名 (如果在 Windows 上可能需要先删除目标文件，但在 Linux/macOS 上是原子的)
+        if os.name == 'nt' and NOTIFIED_FILE.exists():
+            try:
+                NOTIFIED_FILE.unlink()
+            except OSError:
+                pass
+        temp_file.replace(NOTIFIED_FILE)
     except IOError as e:
         logger.error(f"保存已通知记录失败: {e}")
 
 
 def match_keywords(text: str, keywords: List[str]) -> List[str]:
     """
-    检查文本是否包含关键词（不区分大小写）
+    检查文本是否包含关键词（不区分大小写，支持单词边界匹配）
     返回匹配到的关键词列表
     """
     if not text or not keywords:
@@ -101,8 +126,18 @@ def match_keywords(text: str, keywords: List[str]) -> List[str]:
         keyword = keyword.strip()
         if not keyword:
             continue
-        if keyword.lower() in text_lower:
-            matched.append(keyword)
+
+        # 使用正则进行单词边界匹配，防止部分匹配 (如 'ai' 匹配 'email')
+        # \b 表示单词边界
+        try:
+            pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+            if re.search(pattern, text_lower):
+                matched.append(keyword)
+        except re.error:
+            # 如果正则构建失败（极少见），回退到普通字符串包含
+            if keyword.lower() in text_lower:
+                matched.append(keyword)
+
     return matched
 
 
@@ -296,9 +331,6 @@ def check_and_notify():
     logger.info("=" * 50)
     logger.info("开始检查 Kaggle 比赛...")
 
-    # 设置 Kaggle 认证
-    setup_kaggle_credentials()
-
     # 初始化 API
     api = KaggleApi()
     api.authenticate()
@@ -344,20 +376,37 @@ def check_and_notify():
 def main():
     """主函数 - 循环运行"""
     logger.info("🏆 Kaggle Competition Monitor 启动")
+
+    # 设置 Kaggle 认证 (只需执行一次)
+    setup_kaggle_credentials()
+
     logger.info(f"检查间隔: {CHECK_INTERVAL_HOURS} 小时")
     logger.info(f"监控关键词: {', '.join([kw.strip() for kw in KEYWORDS if kw.strip()])}")
 
-    while True:
+    while running:
         try:
             check_and_notify()
         except Exception as e:
             logger.error(f"检查过程中发生错误: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+        if not running:
+            break
 
         # 等待下一次检查
         wait_seconds = CHECK_INTERVAL_HOURS * 3600
         logger.info(f"下次检查时间: {datetime.now().timestamp() + wait_seconds}")
         logger.info(f"等待 {CHECK_INTERVAL_HOURS} 小时后进行下一次检查...")
-        time.sleep(wait_seconds)
+
+        # 使用循环 sleep 以便能够更快响应退出信号
+        slept = 0
+        step = 1  # 每一秒检查一次信号
+        while slept < wait_seconds and running:
+            time.sleep(step)
+            slept += step
+
+    logger.info("程序已停止")
 
 
 if __name__ == '__main__':
